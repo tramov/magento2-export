@@ -16,6 +16,8 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
     private $taxrateFactory;
     private $logger;
 
+    private $orderItemTaxFactory; 
+
     public function __construct(
         Data $helper,
         Accountnumber $oAccountNumberHelper,
@@ -122,8 +124,7 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
         $iCountExist = 0;
         $sErrorMsg = '';
         $sInfoMsg = '';
-
-
+        
         $iStoreId = $oContainer->getStoreId();
         if (empty($iStoreId))
         {
@@ -139,7 +140,7 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
         $sInvoiceNr = 'X' . $oContainer->getIncrementId();
         $sExportType = __('object');
 
-
+        
         if ($oContainer instanceof \Magento\Sales\Model\Order\Invoice)
         {
             $sExportType = __('factuur');
@@ -150,7 +151,7 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
             $sExportType = __('creditering');
             $sInvoiceNr = 'C' . $oContainer->getIncrementId();
         }
-
+        
         $aSettings = $this->helper->getConnectorSettings($iStoreId);
 
         $oBillingAddress = $oContainer->getBillingAddress();
@@ -158,6 +159,7 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
         if(!$oShippingAddress){
             $oShippingAddress = $oBillingAddress;
         }
+
 
 
         if (empty($aSettings['bConOK']))
@@ -239,19 +241,6 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
             $totalBaseAmountInclTaxItems = 0;
             $totalBaseTaxItems = 0;
 
-/*
-            $aTaxInfo = $oOrder->getFullTaxInfo();
-            $aValidTaxPerc = array();
-            foreach ( $aTaxInfo as $aTaxInfoItem )
-            {
-                foreach ( $aTaxInfoItem['rates'] as $aRateInfo )
-                {
-                    #debug($aRateInfo);
-                    $aValidTaxPerc[ $aRateInfo['percent'] ] = 1;
-                }
-            }
-*/
-
             $iGbRekening = $iCostcenter = 0;
             foreach ($aOrderItems as $oItem) {
                 $sType = $this->_getItemType($oItem);
@@ -268,12 +257,6 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
                     $oItem->getOrderItem()->getId(),
                     $oOrder
                 );
-                /*
-                    (int) $oItem->getOrderItem()->getTaxPercent(),
-                    $oOrder,
-                    $oItem->getOrderItem()->getProduct()->getTaxClassId()
-                );
-                */
 
                 $obj->setData('VatCode', $sVatCode);
 
@@ -294,9 +277,6 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
                 $totalBaseAmountInclTaxItems += $oItem->getRowTotalInclTax();
             }
 
-           # debug($oContainer->debug());
-            #/*
-
             // Add shipping
             if (0 < $oContainer->getShippingAmount())
             {
@@ -314,15 +294,14 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
                     $oOrder
                 );
 
-                $obj->setData('sVatCode', $sVatCode);
+                $obj->setData('VatCode', $sVatCode);
+
                 $sXml .= $this->_getItemXml($aSettings,$oContainer,$obj);
+
 
                 $totalBaseAmountItems = $oContainer->getShippingAmount();
                 $totalBaseAmountInclTaxItems += $oContainer->getShippingInclTax();
             }
-
-          #  debug($oContainer->debug());
-
 
             // Add adjustment in case it exists (for credit memos)
             if ((float)$oContainer->getAdjustment() > 0) {
@@ -337,7 +316,7 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
                 $totalBaseAmountItems += $oContainer->getAdjustment();
                 $totalBaseAmountInclTaxItems += $oContainer->getAdjustment();
             }
-            debug($oContainer->debug());
+
             if (!$oContainer instanceof \Magento\Sales\Model\Order\Invoice\Creditmemo) {
 
 
@@ -460,8 +439,7 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
         $fPriceEx = $obj->getData('BEDRAGEXCL');
         $fTaxAmount = $obj->getData('BTWBEDRAG');
 
-        if ($oContainer instanceof  \Magento\Sales\Model\Order\Invoice\Creditmemo){
-            $sComment = 'Refund: ' . $sComment;
+        if ($oContainer instanceof \Magento\Sales\Model\Order\Creditmemo){
             $fPriceIn = -1 * $fPriceIn;
             $fPriceEx = -1 * $fPriceEx;
             $fTaxAmount = -1 * $fTaxAmount;
@@ -529,14 +507,12 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
 
      private function _Find_Ebvatcode($tax_type,$itemId, $oOrder)
     {
-
-
         $sVatCode = false;
         $sMagCode = false;
+	$fVatPercent = 0; 
 
         if (empty($sVatCode) && empty($sMagCode))
         {
-
             // Try finding by percentage in the Order's Full Tax Info
             $aVatPercToMagCode = array();
             $aTaxInfo = $this->taxManagement->getOrderTaxDetails($oOrder->getId());
@@ -548,7 +524,8 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
                             continue;
                         }
                         foreach($aTaxRow['applied_taxes'] as $aTaxRate){
-                            $sMagCode = $aTaxRate['code'];
+			    $fVatPercent = $aTaxRate->getPercent(); //   
+                            $sMagCode = $aTaxRate->getCode(); // ['code'];
                             break;
                         }
                         break;
@@ -565,8 +542,8 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
             {
                 $sVatCode = $sRateEbvatcode;
             }
-        }
-        /*
+        }		
+
         if (empty($sVatCode))
         {
             // Receiving vatcode failed, use fallback vat code choosing method
@@ -574,19 +551,15 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
             {
                 $sVatCode = 'GEEN';
             }
-            elseif (6 == $fVatPercent)
+            elseif (9 == $fVatPercent)
             {
-                $sVatCode = 'LAAG_VERK';
-            }
-            elseif (19 == $fVatPercent)
-            {
-                $sVatCode = 'HOOG_VERK';
+                $sVatCode = 'LAAG_VERK_9';
             }
             else
             {
                 $sVatCode = 'HOOG_VERK_21';
             }
-        }*/
+        }
 
         return $sVatCode;
     }
@@ -618,8 +591,6 @@ Class Export extends \Magento\Framework\App\Helper\AbstractHelper{
         $sXml .= $sMutatieXml;
         $sXml .= '
 </API>';
-
-
 
         $oClient = new \Zend\Http\Client();
         $oClient->setUri('https://secure.e-boekhouden.nl/bh/api.asp');

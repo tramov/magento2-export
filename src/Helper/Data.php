@@ -1,4 +1,5 @@
 <?php
+
 /**
  * NOTICE OF LICENSE
  *
@@ -32,86 +33,81 @@
 
 namespace Eboekhouden\Export\Helper;
 
-class Data extends \Magento\Framework\App\Helper\AbstractHelper
-{
+class Data extends \Magento\Framework\App\Helper\AbstractHelper {
 
-	private $_ModuleResource;
-	private $_scopeConfig;
+    private $_ModuleResource;
+    private $_scopeConfig;
+    private $_urlInterface;
+    protected $_messageManager;
+    protected $_request;
 
-	public function __construct(
-		\Magento\Framework\Module\ModuleResource $ModuleResource,
-		\Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
-	){
-	   $this->_ModuleResource = $ModuleResource;
-	   $this->_scopeConfig = $scopeConfig;
-	}
-    public function getExtensionVersion()
-    {
-    	$model = $this->_ModuleResource->getDataVersion('Eboekhouden_Export');
+    public function __construct(
+            \Magento\Framework\Message\ManagerInterface $messageManager,
+            \Magento\Framework\Module\ModuleResource $ModuleResource,
+            \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
+            \Magento\Framework\App\Request\Http $request,
+            \Magento\Framework\UrlInterface $urlInterface
+    ) {
+        $this->_messageManager = $messageManager;
+        $this->_ModuleResource = $ModuleResource;
+        $this->_scopeConfig = $scopeConfig;
+        $this->_urlInterface = $urlInterface;
+        $this->_request = $request; 
+    }
+
+    public function getExtensionVersion() {
+        $model = $this->_ModuleResource->getDataVersion('Eboekhouden_Export');
         return $model;
     }
 
-
-
-
-
-    public function getConnectorSettings($mStore = null){
-    	$sErrorMsg = '';
+    public function getConnectorSettings($mStore = null) {
+        $sErrorMsg = '';
         $aSettings = array();
 
         #$mStore = 2;
-
+        
         $aSettings['bConOK'] = 0;
-        $aSettings['sConUser'] = trim($this->_scopeConfig->getValue('eboekhouden/connector/username', \Magento\Store\Model\ScopeInterface::SCOPE_STORE,$mStore));
-        $aSettings['sConWord'] = trim($this->_scopeConfig->getValue('eboekhouden/connector/securitycode1', \Magento\Store\Model\ScopeInterface::SCOPE_STORE,$mStore));
-        $aSettings['sConGuid'] = trim($this->_scopeConfig->getValue('eboekhouden/connector/securitycode2', \Magento\Store\Model\ScopeInterface::SCOPE_STORE,$mStore));
-        $aSettings['sShipLedgerAcc'] = intval( trim($this->_scopeConfig->getValue('eboekhouden/settings/shippingledgeraccount', \Magento\Store\Model\ScopeInterface::SCOPE_STORE,$mStore)));
-        $aSettings['sAdjustmentLedgerAcc'] = intval( trim($this->_scopeConfig->getValue('eboekhouden/settings/adjustmentledgeraccount', \Magento\Store\Model\ScopeInterface::SCOPE_STORE,$mStore)));
-        $aSettings['sPaymentFeeLedgerAcc'] = intval( trim($this->_scopeConfig->getValue('eboekhouden/settings/paymentfeeledgeraccount', \Magento\Store\Model\ScopeInterface::SCOPE_STORE,$mStore)));
-        $aSettings['sShipCostcenter'] = intval( trim($this->_scopeConfig->getValue('eboekhouden/settings/shippingcostcenter', \Magento\Store\Model\ScopeInterface::SCOPE_STORE,$mStore)));
+        $aSettings['sConUser'] = trim($this->_scopeConfig->getValue('eboekhouden/connector/username', \Magento\Store\Model\ScopeInterface::SCOPE_STORE, $mStore));
+        $aSettings['sConWord'] = trim($this->_scopeConfig->getValue('eboekhouden/connector/securitycode1', \Magento\Store\Model\ScopeInterface::SCOPE_STORE, $mStore));
+        $aSettings['sConGuid'] = trim($this->_scopeConfig->getValue('eboekhouden/connector/securitycode2', \Magento\Store\Model\ScopeInterface::SCOPE_STORE, $mStore));
+        $aSettings['sShipLedgerAcc'] = intval(trim($this->_scopeConfig->getValue('eboekhouden/settings/shippingledgeraccount', \Magento\Store\Model\ScopeInterface::SCOPE_STORE, $mStore)));
+        $aSettings['sAdjustmentLedgerAcc'] = intval(trim($this->_scopeConfig->getValue('eboekhouden/settings/adjustmentledgeraccount', \Magento\Store\Model\ScopeInterface::SCOPE_STORE, $mStore)));
+        $aSettings['sPaymentFeeLedgerAcc'] = intval(trim($this->_scopeConfig->getValue('eboekhouden/settings/paymentfeeledgeraccount', \Magento\Store\Model\ScopeInterface::SCOPE_STORE, $mStore)));
+        $aSettings['sShipCostcenter'] = intval(trim($this->_scopeConfig->getValue('eboekhouden/settings/shippingcostcenter', \Magento\Store\Model\ScopeInterface::SCOPE_STORE, $mStore)));
 
-        if ( empty($aSettings['sShipLedgerAcc']) )
-        {
+        if (empty($aSettings['sShipLedgerAcc'])) {
             $aSettings['sShipLedgerAcc'] = 8000;
         }
-        if ( empty($aSettings['sShipCostcenter']) )
-        {
+        if (empty($aSettings['sShipCostcenter'])) {
             $aSettings['sShipCostcenter'] = 0;
         }
 
-        if (empty($aSettings['sConUser']) || empty($aSettings['sConWord']) || empty($aSettings['sConGuid']))
-        {
+        if (empty($aSettings['sConUser']) || empty($aSettings['sConWord']) || empty($aSettings['sConGuid'])) {
 
-            $sCurrentUrl = Mage::helper('core/url')->getCurrentUrl();
-            if (    !Mage::app()->getRequest()->getParam('eboekhouden_config_error', 0)
-                 && !preg_match('|/system_config/|i',$sCurrentUrl)
-               )
-            {
+            $sCurrentUrl = $this->_urlInterface->getCurrentUrl();
+            $configFlag = $this->_request->getPost('eboekhouden_config_error');
+            
+            if (!$configFlag && !preg_match('|/system_config/|i', $sCurrentUrl)
+            ) {
                 $aSettings['bConOK'] = 0;
-                $sErrorMsg .= Mage::helper('Eboekhouden_Export')
-                        ->__('Configuratie is niet volledig ingevuld, ga naar het menu "%s","%s" en kies "e-Boekhouden.nl" uit de zijbalk. Vul de gegevens in onder "Connector Login Gegevens"',
-                             Mage::helper('adminhtml')->__('System'), Mage::helper('adminhtml')->__('Configuration'));
-                Mage::getSingleton('core/session')->addError($sErrorMsg);
-                Mage::app()->getRequest()->setParam('eboekhouden_config_error', 1);
+                $sErrorMsg .= __('Configuratie is niet volledig ingevuld, ga naar de configuratie en kies "e-Boekhouden.nl" uit de zijbalk. Vul de gegevens in onder "Connector Login Gegevens"');
+                $this->_messageManager->addError($sErrorMsg);
+                $this->_request->setParam('eboekhouden_config_error',1);
             }
-        }
-        else
-        {
+        } else {
             $aSettings['bConOK'] = 1;
         }
-
 
         return $aSettings;
     }
 
-     /**
+    /**
      * Prepare an output string for use in XML for e-Boekhouden.nl
      *
      * @param string $sValue
      * @return string
      */
-    public function xmlPrepare($sValue)
-    {
+    public function xmlPrepare($sValue) {
         $sResult = $sValue;
         $sResult = html_entity_decode($sResult); // remove previous HTML encoding
         // No utf8_encode() needed, all data in Magento is UTF-8.
@@ -119,16 +115,14 @@ class Data extends \Magento\Framework\App\Helper\AbstractHelper
         return $sResult;
     }
 
-     /**
+    /**
      * Prepare an output string for use in XML for e-Boekhouden.nl
      *
      * @param string $sValue
      * @return string
      */
-    public function _xmlAmountPrepare($fValue)
-    {
+    public function _xmlAmountPrepare($fValue) {
         return $this->xmlPrepare(round(floatval($fValue), 2));
     }
-
 
 }

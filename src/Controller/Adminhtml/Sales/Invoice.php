@@ -47,6 +47,7 @@ class Invoice extends \Magento\Sales\Controller\Adminhtml\Order\AbstractMassActi
             $invoiceIds[] = $invoice->getId();
 
         }
+        
      	list($iAdded, $iExist, $sErrorMsg, $sInfoMsg) = $response = $this->_eHelper->exportInvoices($invoiceIds);
         return $this->_reportExportResult($iAdded, $iExist, $sErrorMsg, $sInfoMsg);
 
